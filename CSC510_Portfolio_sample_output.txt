@@ -1,0 +1,171 @@
+==============================================================================
+ Neural Network-Based Decision Support for Trade Promotion Management
+ CSC510 Portfolio Project - Anand Verma
+==============================================================================
+Building synthetic sales history and baseline model ...
+Tuning and training the neural network (random search over settings) ...
+   trial 1/5: embedding=12, hidden=(32, 16), lr=0.0033, dropout=0.1  ->  validation error 12.07 points
+   trial 2/5: embedding=4, hidden=(32, 16), lr=0.0123, dropout=0.0  ->  validation error 11.42 points
+   trial 3/5: embedding=4, hidden=(32, 16), lr=0.0038, dropout=0.0  ->  validation error 11.63 points
+   trial 4/5: embedding=12, hidden=(32, 16), lr=0.0118, dropout=0.1  ->  validation error 12.54 points
+   trial 5/5: embedding=8, hidden=(96, 48), lr=0.0053, dropout=0.0  ->  validation error 11.68 points
+Ready in 8.8 seconds.
+
+==============================================================================
+ DEMO 1 of 6 - Model quality
+==============================================================================
+
+  === How good is the model? (held-out test promotions, never used in training) ===
+  Test promotions: 900   share that truly earn a profit: 52%
+  Best network settings found by random search: embedding=4, hidden=(32, 16), lr=0.0123
+
+  Lift prediction error (percentage points)        MAE     RMSE
+  Neural network                                  10.8     14.8
+  Linear regression                               19.2     25.4
+  Category average (rule of thumb)                48.2     60.8
+
+  ROI classification (positive vs negative)    Accuracy  Catch neg.  Neg. precision
+  Neural network                                    94%         94%             93%
+  Linear regression                                 86%         89%             84%
+  Category average (rule of thumb)                  87%         86%             87%
+  ('Catch neg.' = share of truly unprofitable promotions the model flagged as negative ROI.)
+
+  New-product (cold start) test, mean error in lift points     Error
+  1 neighbor(s)                                                 17.4
+  3 neighbor(s)                                                 15.0
+  5 neighbor(s)                                                 15.2
+  Average of all other categories                               17.3
+
+  Categories the network treats alike (closest learned embeddings; reflects promotion response, not product type):
+      Disinfecting Wipes     ~ Natural Personal Care (0.59), Water Filtration (-0.04), Charcoal & Grilling (-0.35)
+      Trash Bags             ~ Glass & Surface Cleaners (0.90), Bleach (0.84), Cat Litter (0.73)
+      Charcoal & Grilling    ~ Laundry Additives (0.95), Toilet Bowl Cleaners (0.92), Glass & Surface Cleaners (0.74)
+
+==============================================================================
+ DEMO 2 of 6 - Evaluate one promotion (neural network + expert system)
+==============================================================================
+
+  Promotion : Disinfecting Wipes @ MassRetailer, wk 8-9, 20% off, display=endcap, feature=yes  (2 weeks)
+  Neural network : average lift 260.6%   extra units 246,747
+  Money          : incremental profit $235,710   trade spend $388,561   ROI +61%
+  ROI class      : POSITIVE ROI
+  Rule check     : COMPLIANT
+
+==============================================================================
+ DEMO 3 of 6 - Compare four promotions; one breaks the rules
+==============================================================================
+
+  ----------------------------------------------------------------------------------------------------------------------
+  #  Promotion                                                       Lift      Profit      Spend  ROI class    Rules
+  ----------------------------------------------------------------------------------------------------------------------
+  1  Disinfecting Wipes @ MassRetailer, wk 8-9, 20% off, display=    261%    $235,710   $388,561  POSITIVE ROI COMPLIANT
+  2  Trash Bags @ MassRetailer, wk 27, 38% off, display=endcap, f    246%   -$142,531   $473,692  NEGATIVE ROI NON-COMPLIANT
+  3  Charcoal & Grilling @ GroceryChain, wk 27-28, 22% off, displ    192%     $88,238   $360,762  POSITIVE ROI NEEDS REVIEW
+  4  Cat Litter @ WarehouseClub, wk 30, 25% off, display=none, fe    110%    -$35,112   $247,262  NEGATIVE ROI NEEDS REVIEW
+  ----------------------------------------------------------------------------------------------------------------------
+  Highest predicted profit among allowed options: #1. The planner makes the final call.
+
+  Workflow routing (who sees each promotion next):
+   #1: Category planner          allowed and positive ROI - ready for a funding decision
+   #2: Return to proposer        fix the rule violations before anyone reviews it
+   #3: Trade marketing manager   check the flagged guidelines, then pass to the planner
+   #4: Trade marketing manager   check the flagged guidelines, then pass to the planner
+
+  Explanation for promotion #2 (why the expert system flagged it):
+
+  Promotion : Trash Bags @ MassRetailer, wk 27, 38% off, display=endcap, feature=no  (1 week)
+  Neural network : average lift 246.2%   extra units 111,728
+  Money          : incremental profit -$142,531   trade spend $473,692   ROI -30%
+  ROI class      : NEGATIVE ROI
+  Rule check     : NON-COMPLIANT
+      VIOLATION  minimum margin after discount (limit 10%)
+      VIOLATION  price floor (limit $5.23)
+      VIOLATION  retailer discount cap (limit 35%)
+      VIOLATION  shelf-group discount limit (limit 30%)
+      guideline  deep discount (30%+) (38%), certainty 0.35
+      guideline  overlaps a scheduled promotion (SCH-1), certainty 0.70
+      combined certainty of guidelines: 0.80  (0.50 or more = needs review)
+  Why (inference chain):
+      Review(S2, deep discount (30%+), 0.38)   <- R9: deep discounts can train shoppers to wait for sales
+          because Discount(S2, 0.38)
+      Review(S2, overlaps a scheduled promotion, SCH-1)   <- R7: overlaps a scheduled promotion in the same shelf group at the same retailer
+          because Promotion(S2)
+          because Scheduled(SCH-1)
+          because Retailer(S2, MassRetailer)
+          because Retailer(SCH-1, MassRetailer)
+          because Category(S2, Trash Bags)
+          because Category(SCH-1, Trash Bags)
+          because InGroup(Trash Bags, Bags)
+          because ActiveWeek(S2, 27)
+          because ActiveWeek(SCH-1, 27)
+      Violation(S2, minimum margin after discount, 0.1)   <- R6: gross margin after the discount below the company minimum
+          because PromoMargin(S2, 0.0)
+          because MinPromoMargin(0.1)
+      Violation(S2, price floor, 5.23)   <- R4: shelf price below the price floor (MAP)
+          because ShelfPrice(S2, 4.84)
+          because Category(S2, Trash Bags)
+          because MinShelfPrice(Trash Bags, 5.23)
+      Violation(S2, retailer discount cap, 0.35)   <- R1: retailer discount cap
+          because Retailer(S2, MassRetailer)
+          because Discount(S2, 0.38)
+          because MaxDiscount(MassRetailer, 0.35)
+      Violation(S2, shelf-group discount limit, 0.3)   <- R3: discount above the inherited group limit
+          because Discount(S2, 0.38)
+          Limit(S2, 0.3)   <- R2: every product inherits its shelf group's discount limit
+              because Category(S2, Trash Bags)
+              because InGroup(Trash Bags, Bags)
+              because GroupLimit(Bags, 0.3)
+
+==============================================================================
+ DEMO 4 of 6 - Best promotion for a category (genetic algorithm)
+==============================================================================
+
+  Genetic algorithm: searched 6,912 possible plans for Disinfecting Wipes at MassRetailer (weeks 4-11) using 1000 evaluations in 0.2s.
+  Best fitness by generation: $233,483, $484,724, $484,724, $484,724, $484,724, $484,724
+
+  Top plans found by the genetic algorithm (fitness = profit minus rule penalties):
+  Rank Plan                                                         Profit     ROI class           Rules
+  1     wk 5-8, 15% off, display=endcap, feature=yes              $486,724      POSITIVE    NEEDS REVIEW
+  2     wk 4-7, 15% off, display=endcap, feature=yes              $486,589      POSITIVE    NEEDS REVIEW
+  3     wk 6-9, 15% off, display=endcap, feature=yes              $482,802      POSITIVE    NEEDS REVIEW
+  4     wk 7-10, 15% off, display=endcap, feature=yes             $476,851      POSITIVE       COMPLIANT
+  5     wk 5-8, 14% off, display=endcap, feature=yes              $477,258      POSITIVE    NEEDS REVIEW
+  Check against exhaustive scoring: best possible fitness $484,724; the genetic algorithm reached 100.0% of it.
+
+==============================================================================
+ DEMO 5 of 6 - Six-week calendar (A* symbolic planning)
+==============================================================================
+
+  A* planner for MassRetailer, weeks 24-29: budget $600,000, at least 2 promotions, no repeat in consecutive weeks. (0.1s)
+
+  Week  Action                                                                 Profit      Spend
+  24    Promote(Charcoal & Grilling) 16% off, endcap, feature=yes            $106,387   $160,763
+  25    DoNothing                                                                               
+  26    DoNothing                                                                               
+  27    Promote(Trash Bags) 15% off, endcap, feature=yes                      $85,826   $165,189
+  28    Promote(Charcoal & Grilling) 15% off, endcap, feature=yes            $110,485   $146,948
+  29    Promote(Bleach) 15% off, endcap, feature=yes                          $74,260   $125,089
+  Total expected profit $376,958   trade spend $597,989 of $600,000 budget
+  A* examined 1,471 states (a brute-force search of every calendar would face about 4,826,809).
+  Simple greedy calendar (best promotion each week, no look-ahead): $290,518  -> A* is $86,440 better.
+
+==============================================================================
+ DEMO 6 of 6 - New product with no history (nearest neighbors)
+==============================================================================
+
+  New product: Antibacterial Hand Soap (similar to cleaning products)
+  Nearest existing categories (k=5), borrowed as the starting estimate:
+      Food Storage Bags          distance 1.07
+      Laundry Additives          distance 1.50
+      Toilet Bowl Cleaners       distance 1.69
+      Trash Bags                 distance 1.84
+      Disinfecting Wipes         distance 2.00
+  Discount  Display  Feature   Est. lift  Est. profit/wk
+   20%      endcap   yes            205%         $13,331
+   20%      aisle    yes            157%          $8,208
+   20%      endcap   no             153%          $7,400
+   20%      aisle    no             122%          $5,825
+   10%      endcap   yes             88%          $4,574
+  (Top 5 of 18 test promotions. These are starting estimates only; real results should replace them.)
+
+  Demo finished. Run without --demo to use the interactive menu.
